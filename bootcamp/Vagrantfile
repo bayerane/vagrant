@@ -1,0 +1,59 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-22.04"
+
+  config.vm.define "devapp01" do |devapp|
+    devapp.vm.box_check_update = false
+    devapp.vm.network "private_network", type: "static", ip: "172.16.238.10"
+    devapp.vm.synced_folder "./tomcatwebapp", "/opt/tomcat/webapps"
+    devapp.vm.provision "shell",  inline: <<-SHELL
+      apt-get update
+      apt-get install -y openjdk-17-jdk tomcat9 git
+      echo "0 * * * * rsync -avz /chemin/vers/votre/code vagrant@172.16.238.12:/chemin/de/sauvegarde" | crontab -
+    SHELL
+
+    devapp.vm.provider "virtualbox" do |vb|
+
+      vb.gui = false
+      vb.name = "devapp01"
+      vb.memory = "1024"
+      vb.cpus = 1
+    end
+  end
+
+  config.vm.define "dbapp01" do |dbapp|
+    dbapp.vm.box_check_update = false
+    dbapp.vm.network "private_network", type: "static", ip: "172.16.238.11"
+    dbapp.vm.provision "shell",  inline: <<-SHELL
+      apt-get update
+      apt-get install -y postgresql
+      # Configuration pour permettre l'accès uniquement depuis devapp01
+      echo "host all all 172.16.238.10/32 md5" >> /etc/postgresql/14/main/pg_hba.conf
+      systemctl restart postgresql
+      echo "*/30 * * * * pg_dump -U postgres appdb | gzip > /tmp/backup.sql.gz && scp /tmp/backup.sql.gz vagrant@172.16.238.12:/chemin/de/sauvegarde" | crontab -
+    SHELL
+
+    dbapp.vm.provider "virtualbox" do |vb|
+
+      vb.gui = false
+      vb.name = "dbapp01"
+      vb.memory = "1024"
+      vb.cpus = 1
+    end
+  end
+
+  config.vm.define "backup01" do |backup|
+    backup.vm.box_check_update = false
+    backup.vm.network "private_network", type: "static", ip: "172.16.238.12"
+    backup.vm.provision "shell",  inline: <<-SHELL
+      apt-get update
+    SHELL
+
+    backup.vm.provider "virtualbox" do |vb|
+
+      vb.gui = false
+      vb.name = "backup01"
+      vb.memory = "1024"
+      vb.cpus = 1
+    end
+  end
+end
